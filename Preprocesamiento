@@ -1,0 +1,165 @@
+# InstalaciÃ³n de paquetes.
+
+install.packages("readxl")
+install.packages("ggplot2")
+install.packages("mice")
+install.packages("clusterSim")
+install.packages("corrplot")
+install.packages("MASS")
+install.packages("caret")
+install.packages("pROC")
+install.packages("devtools")
+install.packages("lattice")
+install.packages("scales")
+install.packages("lazyeval")
+install.packages("stringi")
+install.packages("rpart.plot")
+
+# Leer los paquetes.
+
+library(readxl)
+library(ggplot2)
+library(lattice)
+library(mice)
+library(corrplot)
+library(MASS)
+library(clusterSim)
+library(caret)
+library(stats)
+library(pROC)
+library(devtools)
+library(scales)
+library(lazyeval)
+library(stringi)
+library(rpart)
+library(rpart.plot)
+
+# manejo de datos
+
+#cargar librerias para tratamiento de missing values.
+
+install.packages("lattice")
+install.packages("mice")
+install.packages("dplyr")
+library(dplyr)
+library(lattice)
+library(mice)
+
+#----------------------------------------------------------------------------------------------------------
+
+# Preprocesamiento 
+
+# Seleccionar en que carpeta se encuentran nuestros archivos.
+
+setwd("C:/Users/Hache/Desktop/OCTAVO SEMESTRE/BI/Tarea 1 - Primavera 2019")
+
+
+# Se carga la base que se ordenó en relación a Banco, siniestro, asegurado y denunciante.
+# Se cambia la variable de clase a binaria.
+# se eliminó la fila 50.715 que poseía missing values de timemark, details y tampoco tenia datos de cuotas ni pago ni de user liquidador.
+
+bdtest <- read_excel("Tarea 2019S2 - BBDD 2018 ordenada.xlsx", col_names = TRUE)
+
+bdtest <- bdtest%>% 
+  mutate(CLASE = ifelse(CLASE == "POSIBLE FRAUDE" , 1, 0))
+
+
+# ¿ que missing values nos quedan?
+
+summary(is.na(bdtest))
+
+basemice1 <- subset(bdtest, select = c("CLASE","RAMO_LEGAL","CAU_DESCRIPCION","CAS_DESCRIPCION"))
+
+basemice1$RAMO_LEGAL <- as.factor(basemice1$RAMO_LEGAL)
+basemice1$CAU_DESCRIPCION <- as.factor(basemice1$CAU_DESCRIPCION)
+basemice1$CAS_DESCRIPCION <- as.factor(basemice1$CAS_DESCRIPCION)
+
+mod_mice1 <- mice(data = basemice1, m = 5, meth='cart')
+basemice1 <- complete(mod_mice1)
+summary(is.na(basemice1))
+
+basemice2 <- subset(bdtest, select = c("CLASE","SIN_ESTADO_ACTUAL","MONTO_APROBADO","CUOTAS_PAG"))
+str(basemice2)
+basemice2$SIN_ESTADO_ACTUAL <- as.factor(basemice2$SIN_ESTADO_ACTUAL)
+
+mod_mice2 <- mice(data = basemice2, m = 5, meth='cart')
+basemice2 <- complete(mod_mice2)
+summary(is.na(basemice2))
+
+# se selecciona la base sin las variables que llenaremos.
+
+basefull <- subset(bdtest, select = c("CLASE","BANCO","TIPO_EMPRESA_SEGURO","POLIZA_SEGURO","SIN_ID","ID_PRODUCTO_TECNICO","PRODUCTO","SIN_CUOTAS_COBERTURA","SIN_FECHA_OCURRENCIA","SIN_FEC_DENUNCIA","LOT_FECHA_RECEPCION","HEV_TIME_MARK","SIN_NOMBRE_CIUDAD","HEV_DETAILS","SIN_PAGO_ESPECIAL","USER_LIQUIDADOR","LOT_EXTERNO","DNI_ASEGURADO_LLAVE","FECHA_NACIMIENTO","SIN_FEC_INIC_VIG_SINIESTRADO","DNI_DENUNCIANTE_LLAVE"))
+
+# Se les quita la variable clase a las dos bases utilizadas para los mice 1 y 2 para posteriormente agregarlas a la basefull
+
+basemice1 <- basemice1%>% 
+  select(-CLASE)
+basemice2 <- basemice2%>% 
+  select(-CLASE)
+
+# Se agregan bases
+
+basefinalconmice <- cbind(basefull,basemice1,basemice2)
+summary(is.na(basefinalconmice))
+str(basefinalconmice)
+
+# Se utiliza un mice (3) para rellenar los nombres de las ciudades
+
+basemice3 <- subset(basefinalconmice, select = c("CLASE","CAU_DESCRIPCION","CAS_DESCRIPCION","SIN_NOMBRE_CIUDAD"))
+str(basemice3)
+mod_mice3 <- mice(data = basemice3, m = 5, meth='cart')
+basemice3 <- complete(mod_mice3)
+summary(is.na(basemice3))
+basemice3 <- basemice3%>% 
+  select(-CLASE,-CAU_DESCRIPCION,-CAS_DESCRIPCION)
+basefinalconmice <- basefinalconmice%>%
+  select(-SIN_NOMBRE_CIUDAD)
+Base_final <- cbind(basefinalconmice,basemice3)
+
+library(xlsx)
+write.csv(Base_final,file="Basefinalconmice.xls")
+---------------------------------------------------------------------------------------------------------
+  
+# se vuelve a cargar la base desde la carpeta (Se le cambió el nombre de basefinalconmice a Base Final 
+# y luego se une con la base de predicción para completar los
+# missing values de esa data. La base de predicción fue reordenada al igual que la base 2018.
+# cabe destacar que el orden de las columnas o variables cambio luego de agregar las bases rellenas con mice.
+
+bdtrain <- read_excel("Base Final.xlsx", col_names = TRUE)
+bdprediccion <- read_excel("Tarea 2019S2 - PrediccionRequerida.xlsx", col_names = TRUE)
+
+bdfull <- rbind(bdtrain,bdprediccion)
+
+
+# se elimina la variable clase para no alterarla ya que es la variable a predecir.
+
+bdfull <- bdfull%>%
+  select(-CLASE) 
+# se utiliza mice para rellenar missing values de la tabla de prediccion. Se revisa que missing values hay y tipo de variables.
+
+summary(is.na(bdfull))
+
+bdfull$SIN_NOMBRE_CIUDAD <- as.factor(bdfull$SIN_NOMBRE_CIUDAD)
+mod_mice4 <- mice(data = bdfull, m = 5, meth='cart') 
+
+basefull <- complete(mod_mice4)
+
+summary(is.na(basefull))
+
+bdfullconCLASE <- rbind(bdtrain,bdprediccion)
+CLASE <- bdfullconCLASE$CLASE
+
+basefull <- cbind(CLASE,basefull)
+
+#Se separan nuevamente las bases train y test para la etapa de DM
+
+base_train <- basefull%>%
+  filter(is.na(CLASE)==FALSE)
+
+#Extración la base test
+base_test <- basefull%>%
+  filter(is.na(CLASE)==TRUE)
+
+library(xlsx)
+write.csv(base_train,file="Base train final.xls")
+write.csv(base_test,file="Base test final.xls")
